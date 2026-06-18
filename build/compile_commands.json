@@ -1,0 +1,8 @@
+[
+{
+  "directory": "/home/anurag-panwar/Desktop/code/hydrods/build",
+  "command": "/usr/bin/c++  -I/home/anurag-panwar/Desktop/code/hydrods -I/home/anurag-panwar/Desktop/code/hydrods/tlx_baseline -I/home/anurag-panwar/Desktop/code/hydrods/alex_baseline/src/core -Wall -Wextra -O3 -march=native -mtune=native -std=gnu++17 -mavx2 -mfma -O3 -pthread -o CMakeFiles/master_benchmark.dir/master_benchmark.cpp.o -c /home/anurag-panwar/Desktop/code/hydrods/master_benchmark.cpp",
+  "file": "/home/anurag-panwar/Desktop/code/hydrods/master_benchmark.cpp",
+  "output": "CMakeFiles/master_benchmark.dir/master_benchmark.cpp.o"
+}
+]

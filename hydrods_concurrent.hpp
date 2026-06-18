@@ -320,8 +320,8 @@ class ConcurrentHydroDS {
 
 public:
     ConcurrentHydroDS() {
-        buckets_.reserve(2000000); // Pre-allocate to prevent vector reallocation during tests
-        bucket_max_.reserve(2000000);
+        buckets_.reserve(100000); 
+        bucket_max_.reserve(100000);
     }
 
     ~ConcurrentHydroDS() {
