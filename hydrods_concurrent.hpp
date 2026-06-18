@@ -21,6 +21,7 @@
 #include <vector>
 #include <iostream>
 #include <mutex>
+#include <shared_mutex>
 
 #ifdef __AVX2__
 #include <immintrin.h>
@@ -163,12 +164,9 @@ class ConcurrentHydroDS {
             }
             --count;
         }
-    };
-
-    std::vector<Bucket*> buckets_;
-    std::vector<AtomicKey<Key>> bucket_max_; // Atomic for concurrent binary search
-    std::atomic<uint64_t> dir_seq_{0};       // Sequence lock for wait-free directory reads
-    std::mutex split_lock_;                  // Exclusive lock for splits
+    };    std::vector<Bucket*> buckets_;
+    std::vector<AtomicKey<Key>> bucket_max_; 
+    mutable std::shared_mutex dir_lock_;
     std::atomic<size_t> total_size_{0};
 
     static Bucket* alloc_bucket() {
@@ -185,38 +183,25 @@ class ConcurrentHydroDS {
     }
 
     int find_bucket(Key x) const {
-        while (true) {
-            uint64_t seq = dir_seq_.load(std::memory_order_acquire);
-            if (seq & 1) {
-                cpu_pause();
-                continue;
-            }
-
-            int lo = 0;
-            int hi = static_cast<int>(bucket_max_.size()) - 1;
-            while (lo <= hi) {
-                int mid = (lo + hi) >> 1;
-                if (bucket_max_[mid].val.load(std::memory_order_relaxed) >= x) hi = mid - 1;
-                else lo = mid + 1;
-            }
-            if (lo >= static_cast<int>(buckets_.size()))
-                lo = static_cast<int>(buckets_.size()) - 1;
-
-            if (dir_seq_.load(std::memory_order_acquire) == seq) {
-                return lo;
-            }
+        int lo = 0;
+        int hi = static_cast<int>(bucket_max_.size()) - 1;
+        while (lo <= hi) {
+            int mid = (lo + hi) >> 1;
+            if (bucket_max_[mid].val.load(std::memory_order_relaxed) >= x) hi = mid - 1;
+            else lo = mid + 1;
         }
+        if (lo >= static_cast<int>(buckets_.size()))
+            lo = static_cast<int>(buckets_.size()) - 1;
+        return lo;
     }
 
     void update_index(int i) {
         bucket_max_[i].val.store(buckets_[i]->max_key(), std::memory_order_relaxed);
     }
 
-    // Must be called while holding split_lock_
     void split_bucket_global(int i) {
         Bucket* old = buckets_[i];
-        
-        old->lock.write_lock(); // Must lock old bucket to protect concurrent readers
+        old->lock.write_lock();
         int mid = old->count / 2;
 
         Bucket* right = alloc_bucket();
@@ -225,16 +210,13 @@ class ConcurrentHydroDS {
         right->count = right_count;
         old->count = mid;
 
-        dir_seq_.fetch_add(1, std::memory_order_release); // Lock Directory
         buckets_.insert(buckets_.begin() + i + 1, right);
         bucket_max_.insert(bucket_max_.begin() + i + 1, AtomicKey<Key>(right->max_key()));
         update_index(i);
-        dir_seq_.fetch_add(1, std::memory_order_release); // Unlock Directory
         
         old->lock.write_unlock();
     }
 
-    // Local Flow under locks.
     void flow_locked(int i, int j) {
         Bucket* A = buckets_[i];
         Bucket* B = buckets_[j];
@@ -263,33 +245,23 @@ class ConcurrentHydroDS {
     }
 
     void stabilize(int i) {
+        std::shared_lock<std::shared_mutex> dir_read_lock(dir_lock_);
         bool active = false;
         for (int step = 0; step < 2; ++step) {
             bool moved = false;
-
-            uint64_t seq = dir_seq_.load(std::memory_order_acquire);
-            if (seq & 1) break; // If directory is shifting, skip stabilization to avoid race
-
-            if (i >= static_cast<int>(buckets_.size())) {
-                break;
-            }
+            if (i >= static_cast<int>(buckets_.size())) break;
 
             if (i > 0) {
                 int left = i - 1, right = i;
                 buckets_[left]->lock.write_lock();
                 buckets_[right]->lock.write_lock();
 
-                if (dir_seq_.load(std::memory_order_acquire) == seq) {
-                    double dp = buckets_[right]->pressure() - buckets_[left]->pressure();
-                    if ((!active && dp > EPS_HIGH) || (active && dp >= EPS_LOW)) {
-                        active = true;
-                        dir_seq_.fetch_add(1, std::memory_order_release);
-                        flow_locked(right, left);
-                        dir_seq_.fetch_add(1, std::memory_order_release);
-                        moved = true;
-                    }
+                double dp = buckets_[right]->pressure() - buckets_[left]->pressure();
+                if ((!active && dp > EPS_HIGH) || (active && dp >= EPS_LOW)) {
+                    active = true;
+                    flow_locked(right, left);
+                    moved = true;
                 }
-                
                 buckets_[right]->lock.write_unlock();
                 buckets_[left]->lock.write_unlock();
             }
@@ -299,17 +271,12 @@ class ConcurrentHydroDS {
                 buckets_[left]->lock.write_lock();
                 buckets_[right]->lock.write_lock();
 
-                if (dir_seq_.load(std::memory_order_acquire) == seq) {
-                    double dp = buckets_[left]->pressure() - buckets_[right]->pressure();
-                    if ((!active && dp > EPS_HIGH) || (active && dp >= EPS_LOW)) {
-                        active = true;
-                        dir_seq_.fetch_add(1, std::memory_order_release);
-                        flow_locked(left, right);
-                        dir_seq_.fetch_add(1, std::memory_order_release);
-                        moved = true;
-                    }
+                double dp = buckets_[left]->pressure() - buckets_[right]->pressure();
+                if ((!active && dp > EPS_HIGH) || (active && dp >= EPS_LOW)) {
+                    active = true;
+                    flow_locked(left, right);
+                    moved = true;
                 }
-
                 buckets_[right]->lock.write_unlock();
                 buckets_[left]->lock.write_unlock();
             }
@@ -330,21 +297,16 @@ public:
 
     void insert(Key x) {
     restart:
-        uint64_t seq = dir_seq_.load(std::memory_order_acquire);
-        if (seq & 1) { cpu_pause(); goto restart; }
-        
+        dir_lock_.lock_shared();
         if (buckets_.empty()) {
-            std::lock_guard<std::mutex> lock(split_lock_);
+            dir_lock_.unlock_shared();
+            std::lock_guard<std::shared_mutex> lock(dir_lock_);
             if (buckets_.empty()) {
                 Bucket* b = alloc_bucket();
                 b->keys[0] = x;
                 b->count = 1;
-                
-                dir_seq_.fetch_add(1, std::memory_order_release);
                 buckets_.push_back(b);
                 bucket_max_.emplace_back(x);
-                dir_seq_.fetch_add(1, std::memory_order_release);
-                
                 total_size_.fetch_add(1, std::memory_order_relaxed);
                 return;
             }
@@ -353,20 +315,18 @@ public:
 
         int i = find_bucket(x);
         Bucket* B = buckets_[i];
+        dir_lock_.unlock_shared();
         
         B->lock.write_lock();
         
         if (B->needs_split()) {
             B->lock.write_unlock();
-            std::lock_guard<std::mutex> lock(split_lock_);
-            if (i < static_cast<int>(buckets_.size()) && buckets_[i] == B && B->needs_split()) {
-                split_bucket_global(i);
+            std::lock_guard<std::shared_mutex> lock(dir_lock_);
+            // Re-find the bucket index securely under exclusive lock
+            int actual_i = find_bucket(x);
+            if (actual_i < static_cast<int>(buckets_.size()) && buckets_[actual_i]->needs_split()) {
+                split_bucket_global(actual_i);
             }
-            goto restart;
-        }
-
-        if (dir_seq_.load(std::memory_order_acquire) != seq) {
-            B->lock.write_unlock();
             goto restart;
         }
 
@@ -379,11 +339,9 @@ public:
     }
 
     bool search(Key x) const {
-    restart:
-        uint64_t seq = dir_seq_.load(std::memory_order_acquire);
-        if (seq & 1) { cpu_pause(); goto restart; }
-        
+        dir_lock_.lock_shared();
         if (buckets_.empty()) {
+            dir_lock_.unlock_shared();
             return false;
         }
         
@@ -393,24 +351,31 @@ public:
         uint64_t v = B->lock.read_lock();
         bool found = B->contains(x);
         
-        if (!B->lock.check_version(v) || dir_seq_.load(std::memory_order_acquire) != seq) {
-            goto restart;
+        if (!B->lock.check_version(v)) {
+            dir_lock_.unlock_shared();
+            // In a highly contended environment, we'd retry. 
+            // For safety, just grab the write lock to serialize read if optimistic fails
+            B->lock.write_lock();
+            found = B->contains(x);
+            B->lock.write_unlock();
+            return found;
         }
         
+        dir_lock_.unlock_shared();
         return found;
     }
 
     bool erase(Key x) {
     restart:
-        uint64_t seq = dir_seq_.load(std::memory_order_acquire);
-        if (seq & 1) { cpu_pause(); goto restart; }
-
+        dir_lock_.lock_shared();
         if (buckets_.empty()) {
+            dir_lock_.unlock_shared();
             return false;
         }
 
         int i = find_bucket(x);
         Bucket* B = buckets_[i];
+        dir_lock_.unlock_shared();
 
         B->lock.write_lock();
         
@@ -419,24 +384,20 @@ public:
             B->lock.write_unlock();
             return false;
         }
-        
-        if (dir_seq_.load(std::memory_order_acquire) != seq) {
-            B->lock.write_unlock();
-            goto restart;
-        }
 
         B->remove_at(pos);
         update_index(i);
         
         if (B->is_empty()) {
             B->lock.write_unlock();
-            std::lock_guard<std::mutex> lock(split_lock_);
-            if (i < static_cast<int>(buckets_.size()) && buckets_[i] == B && B->is_empty()) {
-                dir_seq_.fetch_add(1, std::memory_order_release);
-                free_bucket(B);
-                buckets_.erase(buckets_.begin() + i);
-                bucket_max_.erase(bucket_max_.begin() + i);
-                dir_seq_.fetch_add(1, std::memory_order_release);
+            std::lock_guard<std::shared_mutex> lock(dir_lock_);
+            // Re-find and delete if still empty
+            int actual_i = find_bucket(x);
+            Bucket* actual_B = buckets_[actual_i];
+            if (actual_B->is_empty()) {
+                free_bucket(actual_B);
+                buckets_.erase(buckets_.begin() + actual_i);
+                bucket_max_.erase(bucket_max_.begin() + actual_i);
             }
             total_size_.fetch_sub(1, std::memory_order_relaxed);
             return true;
@@ -444,19 +405,14 @@ public:
 
         B->lock.write_unlock();
         total_size_.fetch_sub(1, std::memory_order_relaxed);
-        
-        if (i > 0 || i + 1 < static_cast<int>(buckets_.size())) {
-            stabilize(i);
-        }
+        stabilize(i);
         return true;
     }
 
     int64_t range_query(Key lo, Key hi) const {
-    restart:
-        uint64_t seq = dir_seq_.load(std::memory_order_acquire);
-        if (seq & 1) { cpu_pause(); goto restart; }
-        
+        dir_lock_.lock_shared();
         if (buckets_.empty() || lo > hi) {
+            dir_lock_.unlock_shared();
             return 0;
         }
 
@@ -467,18 +423,9 @@ public:
             Bucket* B = buckets_[i];
             
             uint64_t v = B->lock.read_lock();
-            if (B->count == 0) {
-                if (!B->lock.check_version(v) || dir_seq_.load(std::memory_order_acquire) != seq) {
-                    goto restart;
-                }
-                continue;
-            }
-            if (B->min_key() > hi) {
-                if (!B->lock.check_version(v) || dir_seq_.load(std::memory_order_acquire) != seq) {
-                    goto restart;
-                }
-                break;
-            }
+            if (B->count == 0) continue;
+            
+            if (B->min_key() > hi) break;
 
             int start = B->lower_bound_pos(lo);
             int local_cnt = 0;
@@ -486,12 +433,16 @@ public:
                 local_cnt++;
             }
             
-            if (!B->lock.check_version(v) || dir_seq_.load(std::memory_order_acquire) != seq) {
-                goto restart; 
+            if (!B->lock.check_version(v)) {
+                B->lock.write_lock();
+                local_cnt = 0;
+                for (int j = start; j < B->count && B->keys[j] <= hi; ++j) local_cnt++;
+                B->lock.write_unlock();
             }
             cnt += local_cnt;
         }
         
+        dir_lock_.unlock_shared();
         return cnt;
     }
 
