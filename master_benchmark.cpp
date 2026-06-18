@@ -121,7 +121,7 @@ int main(int argc, char** argv) {
         cout << "[Perf] Delete 500k:          " << chrono::duration<double>(d2 - d1).count() << " s\n";
         cout << "[Mem]  Physical RAM:         " << (mem_after - mem_before) << " MB\n";
         cout << "[Mem]  Bytes per Key:        " << (double)((mem_after - mem_before) * 1024 * 1024) / N << " bytes\n";
-        cout << "[CHK]  " << search_chk << "|" << range_chk_s << "|" << del_chk << "\n";
+        cout << "[CHK]  " << search_chk << "|" << range_chk_s << "|" << range_chk_m << "|" << range_chk_l << "|" << del_chk << "\n";
         
     } else if (mode == "tlx_btree" || mode == "csb_tree") {
         tlx::btree_multiset<int32_t> b;
@@ -179,7 +179,7 @@ int main(int argc, char** argv) {
         cout << "[Perf] Delete 500k:          " << chrono::duration<double>(d2 - d1).count() << " s\n";
         cout << "[Mem]  Physical RAM:         " << (mem_after - mem_before) << " MB\n";
         cout << "[Mem]  Bytes per Key:        " << (double)((mem_after - mem_before) * 1024 * 1024) / N << " bytes\n";
-        cout << "[CHK]  " << search_chk << "|" << range_chk_s << "|" << del_chk << "\n";
+        cout << "[CHK]  " << search_chk << "|" << range_chk_s << "|" << range_chk_m << "|" << range_chk_l << "|" << del_chk << "\n";
 
     } else if (mode == "alex") {
         alex::Alex<int32_t, int32_t> a;

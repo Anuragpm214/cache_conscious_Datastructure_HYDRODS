@@ -1,112 +1,80 @@
-# HydroDS 🌊 
+# HydroDS: A Cache-Conscious Concurrent Data Structure
 
-[![C++20](https://img.shields.io/badge/C++-20-blue.svg)](https://isocpp.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+HydroDS is a highly optimized, concurrent, and cache-conscious in-memory index structure designed to bridge the gap between traditional B-Trees and modern Learned Indexes. By leveraging contiguous memory blocks (buckets) and AVX2 SIMD vectorization, HydroDS provides deterministic performance, low memory footprint, and massive scalability.
 
-**HydroDS** is a blazingly fast, highly concurrent in-memory index structure designed as a drop-in replacement for traditional B-Trees and `std::multiset`. It is engineered from the ground up to eliminate CPU cache misses and lock-contention in modern multi-core systems.
+## 🚀 Extreme Performance Profiling (ALEX vs CSB+-Tree vs HydroDS)
 
-By combining **AVX2 SIMD vectorization** with a novel **fluid-dynamics-inspired concurrency model**, HydroDS easily sustains over **21 Million Operations per Second (MOps/s)** on commodity hardware, outperforming coarse-grained B-Trees by over **10x** under heavy write contention.
+The following benchmarks were recorded on bare-metal hardware using Linux `perf` counters (`taskset -c 0 perf stat -e cache-misses,L1-dcache-load-misses`).
 
----
+**Workload Profile:**
+- **Keys:** 5 Million (32-bit Integers)
+- **Queries:** 500k Searches, 50k Small Ranges (Length 100), 500k Deletes
+- **Configuration:** HydroDS (Capacity = 256), CSB+-Tree (tlx), ALEX (Learned Index)
 
-## ⚡ Why Use HydroDS?
+### 📊 1. Core Operations Latency (Seconds)
 
-If your application suffers from lock contention when multiple threads try to insert or read from a shared `std::map`, `std::set`, or standard B-Tree, HydroDS solves this natively:
+| Operation | HydroDS (C=256) | CSB+-Tree (tlx) | ALEX (Learned Index) | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| **Insert (5M)** | 4.38 s | 5.07 s | **2.33 s** | ALEX dominates writes on uniform data, but HydroDS beats CSB+. |
+| **Search (500k)** | 0.186 s | 0.543 s | **0.039 s** | HydroDS is **3x faster** than CSB+-Tree. ALEX's $O(1)$ ML prediction wins. |
+| **Range Scan (Small)**| 0.041 s | 0.185 s | **0.023 s** | HydroDS is **4.5x faster** than CSB+-Tree due to contiguous layout. |
+| **Delete (500k)** | 0.619 s | 0.747 s | **0.099 s** | HydroDS outperforms CSB+ due to its vector-free `Pressure-Flow` merging. |
 
-* 🚫 **No Pointer Chasing**: Traditional trees suffer from L2/L3 cache misses while jumping between nodes. HydroDS uses flat, cache-line-aligned arrays.
-* 🚀 **Wait-Free Reads**: Search queries execute purely via relaxed atomic loads (RCU-style Sequence Locks). Readers **never** write to shared memory, completely eliminating False Sharing.
-* 🌊 **Pressure-Flow Contention Absorption**: When a B-Tree node fills up, it splits, propagating locks all the way up to the root and stalling the entire tree. HydroDS treats buckets like water tanks: when one gets too full ("high pressure"), it asynchronously "flows" elements to neighboring buckets using only local, fine-grained locks.
-
----
-
-## 💻 Quickstart
-
-HydroDS is a header-only library. Simply include it and go!
-
-```cpp
-#include "hydrods_concurrent.hpp"
-#include <iostream>
-#include <thread>
-
-int main() {
-    // Initialize the concurrent index (128 elements per bucket)
-    ConcurrentHydroDS<int32_t, 128> index;
-
-    // 1. Thread-safe Insertions
-    std::thread writer([&]() {
-        for(int i = 0; i < 100000; i++) {
-            index.insert(i);
-        }
-    });
-
-    // 2. Wait-free Searches
-    std::thread reader([&]() {
-        bool found = index.search(42);
-        std::cout << "Found 42? " << found << std::endl;
-    });
-
-    writer.join();
-    reader.join();
-
-    // 3. Fast Range Queries
-    int64_t count = index.range_query(10, 50);
-    std::cout << "Elements between 10 and 50: " << count << std::endl;
-
-    return 0;
-}
-```
+*(Note: Medium/Large range queries for CSB+ and ALEX were omitted from this table due to GCC `-O3` dead-code elimination, but HydroDS strictly evaluated them in 0.043s and 0.023s respectively).*
 
 ---
 
-## 🧠 Architecture: How it Works
+### 🧠 2. The Cache-Miss Paradox (Why HydroDS beats CSB+)
 
-1. **The Directory**: A Wait-Free Sequence Lock (`seqlock`) protects an array of bucket pointers. Readers check a sequence number, binary search the index, and access the bucket without acquiring a single hardware lock.
-2. **The Bucket**: Cache-line aligned arrays holding 128 integers. Intra-bucket searches don't use branching; they use **AVX2 SIMD instructions** to scan 8 integers per CPU cycle.
-3. **Optimistic Lock Coupling (OLC)**: Every bucket has a version counter. Writers lock a bucket by turning the version odd. Readers read the version, scan the bucket, and verify the version hasn't changed.
+When analyzing hardware counters, a fascinating architectural truth emerges:
 
----
+| Structure | L1 D-Cache Misses | Time Taken (Search) |
+| :--- | :--- | :--- |
+| **CSB+-Tree** | 67.6 Million | 0.543 s (Slow) |
+| **HydroDS** | 130.5 Million | **0.186 s (Fast)** |
 
-## 📊 Benchmarks
-
-*Tested on 16 Threads | 2 Million Operations | vs `tlx::btree` (with Global Read-Write Lock)*
-
-### Workload 1: 100% Read (Uniform)
-Tests raw Wait-Free execution. Because HydroDS readers never increment an atomic reference counter, they scale perfectly with physical cores.
-* **HydroDS**: 🟢 21.41 MOps/sec
-* **B-Tree**: 🔴 2.74 MOps/sec *(Bottlenecked by cache-line bouncing on the RW-Lock)*
-
-### Workload 2: 95% Read / 5% Insert (Zipfian Skew)
-Tests realistic database access where 80% of operations hit the same 20% of the data. 
-* **HydroDS**: 🟢 10.45 MOps/sec *(Pressure-Flow handles local write bursts gracefully)*
-* **B-Tree**: 🔴 0.81 MOps/sec *(Global tree modifications crush concurrent throughput)*
-
-### Memory Footprint
-* **HydroDS**: 6.69 bytes / key
-* **B-Tree**: ~12.0 bytes / key
+**The Paradox:** How is HydroDS 3x faster than CSB+-Tree when it has 2x more L1 Cache Misses?
+**The Answer: Memory Access Patterns & Prefetching.** 
+CSB+-Tree performs *pointer-chasing*. Every node traversal is a dependent memory fetch, stalling the CPU pipeline until the RAM responds. 
+HydroDS performs *linear SIMD scans* over 1KB contiguous buckets. While scanning 1KB triggers multiple L1 load misses, the CPU's Hardware Prefetcher sees the linear pattern and fetches the data *before* the CPU needs it. The misses are fully pipelined, resulting in vastly superior wall-clock speeds.
 
 ---
 
-## 🛠️ Building & Testing
+### 💾 3. The Memory Footprint Tax
 
-Make sure you have CMake and a compiler that supports C++20 and AVX2 (`-march=native`).
+Learned Indexes (like ALEX) achieve blistering point-query speeds by predicting array locations. However, this requires maintaining massive sparse arrays with empty "gaps". 
 
+| Structure | Physical RAM Used | Bytes per Key |
+| :--- | :--- | :--- |
+| **ALEX** | 88 MB | 18.45 bytes/key |
+| **CSB+-Tree** | 33 MB | 6.92 bytes/key |
+| **HydroDS** | **32 MB** | **6.71 bytes/key** |
+
+**Conclusion:** HydroDS provides a deterministic memory footprint that is **2.75x smaller than ALEX** and even edges out the CSB+-Tree! HydroDS proves that you don't need to sacrifice massive amounts of RAM (like Learned Indexes do) to beat B-Trees.
+
+---
+
+## 🛠️ Compilation and Benchmarking
+
+This repository contains a unified benchmarking suite designed for strict hardware profiling.
+
+### 1. Build the Benchmark
 ```bash
-git clone https://github.com/yourusername/hydrods.git
-cd hydrods
 mkdir build && cd build
 cmake ..
 make -j$(nproc)
 ```
 
-**Run the Scaling Benchmark:**
-```bash
-./benchmark_scaling
-```
+### 2. Run with Performance Counters
+To replicate the hardware-level cache analysis, use `taskset` to pin execution to a single core and `perf` to track L1 misses:
 
-**Run Correctness & Thread-Sanitizer Tests:**
 ```bash
-./test_concurrent
-```
+# Profile HydroDS
+taskset -c 0 perf stat -e cache-misses,L1-dcache-load-misses ./build/master_benchmark hydrods
 
-## 📜 License
-HydroDS is open-source software licensed under the MIT License.
+# Profile CSB+-Tree
+taskset -c 0 perf stat -e cache-misses,L1-dcache-load-misses ./build/master_benchmark csb_tree
+
+# Profile ALEX
+taskset -c 0 perf stat -e cache-misses,L1-dcache-load-misses ./build/master_benchmark alex
+```
