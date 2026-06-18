@@ -43,12 +43,19 @@ target_link_libraries(test_concurrent PRIVATE pthread)
 
 # ---- Phase 3 Scaling Benchmark ----
 add_executable(benchmark_scaling benchmark_scaling.cpp)
+add_executable(benchmark_capacity benchmark_capacity.cpp)
 target_include_directories(benchmark_scaling PRIVATE 
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/tlx_baseline
 )
+target_include_directories(benchmark_capacity PRIVATE 
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/tlx_baseline
+)
 target_compile_options(benchmark_scaling PRIVATE -Wall -Wextra -O3 -march=native -mtune=native)
+target_compile_options(benchmark_capacity PRIVATE -Wall -Wextra -O3 -march=native -mtune=native)
 target_link_libraries(benchmark_scaling PRIVATE pthread)
+target_link_libraries(benchmark_capacity PRIVATE pthread)
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "CXX Flags:  ${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE}}")
