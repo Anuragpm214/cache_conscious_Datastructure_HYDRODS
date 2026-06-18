@@ -6,5 +6,5 @@ CXX_DEFINES =
 
 CXX_INCLUDES = -I/home/anurag-panwar/Desktop/code/hydrods -I/home/anurag-panwar/Desktop/code/hydrods/tlx_baseline -I/home/anurag-panwar/Desktop/code/hydrods/alex_baseline/src/core
 
-CXX_FLAGS = -Wall -Wextra -O3 -march=native -mtune=native -std=gnu++17 -mavx2 -mfma -O3 -pthread
+CXX_FLAGS = -Wall -Wextra -O3 -march=native -mtune=native -std=gnu++17 -mavx2 -mfma -O3 -pthread -fopenmp -fopenmp
 
