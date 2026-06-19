@@ -1,0 +1,24 @@
+# CMake build directory
+build/
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+
+# Python Virtual Environment
+venv/
+__pycache__/
+*.pyc
+
+# Compiled binaries (if generated in root)
+hydrods_original_fixed
+hydrods_test
+master_benchmark
+
+# Local planning / scratch files
+plan.md
+plan2.md
+
+# OS generated files
+.DS_Store
+Thumbs.db
