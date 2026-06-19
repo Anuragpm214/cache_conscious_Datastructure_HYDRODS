@@ -457,17 +457,21 @@ The benchmark uses the following fixed workload (defined in `master_benchmark.cp
 | **Range Large (50 × 500K)** | 0.0966 s | 0.2098 s | 0.1327 s | HydroDS |
 | **Delete (500K)** | 0.7702 s | 1.2507 s | 0.2961 s | ALEX |
 
+![Latency Plot](artifacts/latency_plot.png)
+
 ---
 
-### 2. Cache-Miss Analysis (Hardware Counters) *(Tested at 1 thread)*
+### 2. Cache-Miss Analysis & Extended Hardware Metrics *(Tested at 1 thread)*
 
-> Collected via `taskset -c 0 perf stat -e cache-misses,L1-dcache-load-misses`
+> Collected via `taskset -c 0 perf stat -e cache-misses,cache-references,instructions,cycles,branches,branch-misses,L1-dcache-load-misses`
 
-| Structure | L1 D-Cache Load Misses | Total Cache Misses | Search Latency |
-|:----------|:----------------------|:-------------------|:---------------|
-| **HydroDS** | 140,508,351 | 165,218,968 | 0.5714 s |
-| **CSB+-Tree** | 73,483,836 | 112,710,780 | 0.7791 s |
-| **ALEX** | 30,640,437 | 61,146,888 | 0.0856 s |
+| Structure | L1 Misses | Cache Misses | Cache Refs | Instructions | Cycles | Branches | Branch Misses | IPC | Search Latency |
+|:----------|:----------|:-------------|:-----------|:-------------|:-------|:---------|:--------------|:----|:---------------|
+| **HydroDS** | 141.7M | 167.3M | 206.9M | 5.76B | 7.08B | 1.15B | 77.3M | 0.81 | 0.5736 s |
+| **CSB+-Tree** | 72.8M | 112.5M | 134.9M | 5.85B | 6.85B | 1.11B | 85.3M | 0.85 | 0.7336 s |
+| **ALEX** | 30.0M | 60.0M | 75.8M | 5.88B | 3.20B | 0.99B | 22.6M | 1.84 | 0.0827 s |
+
+![Hardware Counters Plot](artifacts/hardware_counters_plot.png)
 
 **Explanation of the Cache-Miss Paradox:**
 
@@ -485,6 +489,8 @@ HydroDS may exhibit *more* L1 cache misses than CSB+-Tree yet still perform fast
 | **HydroDS** | 33 MB | 6.9 B/key | Dense packing via Pressure-Flow |
 | **CSB+-Tree** | 33 MB | 6.9 B/key | Standard B-Tree node overhead |
 | **ALEX** | 89 MB | 18.6 B/key | Sparse gapped arrays for ML prediction |
+
+![Memory Footprint Plot](artifacts/memory_footprint_plot.png)
 
 ---
 
@@ -530,6 +536,12 @@ HydroDS may exhibit *more* L1 cache misses than CSB+-Tree yet still perform fast
 | **8** | 10.4683 | 0.2669 | 0.0239 | 0.0514 | 0.0276 | 0.9048 | 83 |
 | **16** | 24.0261 | 0.2242 | 0.0223 | 0.0501 | 0.0268 | 2.2943 | 87 |
 | **32** | 24.1301 | 0.2180 | 0.0274 | 0.0558 | 0.0273 | 2.0618 | 122 |
+
+#### Thread Scaling Plots
+
+![Scaling Insert Plot](artifacts/scaling_insert_plot.png)
+
+![Scaling Search Plot](artifacts/scaling_search_plot.png)
 
 ---
 
