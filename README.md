@@ -434,40 +434,40 @@ The benchmark uses the following fixed workload (defined in `master_benchmark.cp
 
 | Spec | Value |
 |------|-------|
-| **CPU** | ___ |
-| **Cores / Threads** | ___ |
-| **L1 D-Cache** | ___ |
-| **L2 Cache** | ___ |
-| **L3 Cache** | ___ |
-| **RAM** | ___ |
-| **OS** | ___ |
-| **Compiler** | ___ |
+| **CPU** | 12th Gen Intel(R) Core(TM) i5-12450H |
+| **Cores / Threads** | 8 Cores / 12 Threads |
+| **L1 D-Cache** | 320 KiB |
+| **L2 Cache** | 7 MiB |
+| **L3 Cache** | 12 MiB |
+| **RAM** | 15 GiB |
+| **OS** | Linux (Ubuntu 24.04.1) |
+| **Compiler** | GCC 13.3.0 |
 | **Flags** | `-O3 -mavx2 -mfma -fopenmp -march=native` |
 
 ---
 
-### 1. Single-Threaded Core Operations Latency
+### 1. Single-Threaded Core Operations Latency *(Tested at 1 thread)*
 
 | Operation | HydroDS (C=256) | CSB+-Tree (TLX) | ALEX (Learned Index) | Winner |
 |:----------|:----------------|:-----------------|:---------------------|:-------|
-| **Insert (5M)** | ___ s | ___ s | ___ s | ___ |
-| **Search (500K)** | ___ s | ___ s | ___ s | ___ |
-| **Range Small (50K × 100)** | ___ s | ___ s | ___ s | ___ |
-| **Range Medium (5K × 10K)** | ___ s | ___ s | ___ s | ___ |
-| **Range Large (50 × 500K)** | ___ s | ___ s | ___ s | ___ |
-| **Delete (500K)** | ___ s | ___ s | ___ s | ___ |
+| **Insert (5M)** | 7.5090 s | 7.0767 s | 3.6405 s | ALEX |
+| **Search (500K)** | 0.4975 s | 0.7908 s | 0.0770 s | ALEX |
+| **Range Small (50K × 100)** | 0.0881 s | 0.1797 s | 0.0633 s | ALEX |
+| **Range Medium (5K × 10K)** | 0.1986 s | 0.4387 s | 0.2904 s | HydroDS |
+| **Range Large (50 × 500K)** | 0.0966 s | 0.2098 s | 0.1327 s | HydroDS |
+| **Delete (500K)** | 0.7702 s | 1.2507 s | 0.2961 s | ALEX |
 
 ---
 
-### 2. Cache-Miss Analysis (Hardware Counters)
+### 2. Cache-Miss Analysis (Hardware Counters) *(Tested at 1 thread)*
 
 > Collected via `taskset -c 0 perf stat -e cache-misses,L1-dcache-load-misses`
 
 | Structure | L1 D-Cache Load Misses | Total Cache Misses | Search Latency |
 |:----------|:----------------------|:-------------------|:---------------|
-| **HydroDS** | ___ | ___ | ___ s |
-| **CSB+-Tree** | ___ | ___ | ___ s |
-| **ALEX** | ___ | ___ | ___ s |
+| **HydroDS** | 140,508,351 | 165,218,968 | 0.5714 s |
+| **CSB+-Tree** | 73,483,836 | 112,710,780 | 0.7791 s |
+| **ALEX** | 30,640,437 | 61,146,888 | 0.0856 s |
 
 **Explanation of the Cache-Miss Paradox:**
 
@@ -478,13 +478,13 @@ HydroDS may exhibit *more* L1 cache misses than CSB+-Tree yet still perform fast
 
 ---
 
-### 3. Memory Footprint Comparison
+### 3. Memory Footprint Comparison *(Tested at 1 thread)*
 
 | Structure | Physical RAM (RSS) | Bytes per Key | Notes |
 |:----------|:-------------------|:-------------|:------|
-| **HydroDS** | ___ MB | ___ B/key | Dense packing via Pressure-Flow |
-| **CSB+-Tree** | ___ MB | ___ B/key | Standard B-Tree node overhead |
-| **ALEX** | ___ MB | ___ B/key | Sparse gapped arrays for ML prediction |
+| **HydroDS** | 33 MB | 6.9 B/key | Dense packing via Pressure-Flow |
+| **CSB+-Tree** | 33 MB | 6.9 B/key | Standard B-Tree node overhead |
+| **ALEX** | 89 MB | 18.6 B/key | Sparse gapped arrays for ML prediction |
 
 ---
 
@@ -494,12 +494,12 @@ HydroDS may exhibit *more* L1 cache misses than CSB+-Tree yet still perform fast
 
 | Threads | Insert (s) | Search (s) | Range Sml (s) | Range Med (s) | Range Lrg (s) | Delete (s) | Memory (MB) |
 |:--------|:-----------|:-----------|:--------------|:--------------|:--------------|:-----------|:------------|
-| **1** | ___ | ___ | ___ | ___ | ___ | ___ | ___ |
-| **2** | ___ | ___ | ___ | ___ | ___ | ___ | ___ |
-| **4** | ___ | ___ | ___ | ___ | ___ | ___ | ___ |
-| **8** | ___ | ___ | ___ | ___ | ___ | ___ | ___ |
-| **16** | ___ | ___ | ___ | ___ | ___ | ___ | ___ |
-| **32** | ___ | ___ | ___ | ___ | ___ | ___ | ___ |
+| **1** | 7.5090 | 0.4975 | 0.0881 | 0.1986 | 0.0966 | 0.7702 | 33 |
+| **2** | 7.2150 | 0.3369 | 0.0633 | 0.1730 | 0.0860 | 0.6437 | 30 |
+| **4** | 7.8671 | 0.2561 | 0.0293 | 0.0629 | 0.0323 | 0.5671 | 31 |
+| **8** | 8.3546 | 0.2533 | 0.0272 | 0.0402 | 0.0295 | 0.5296 | 30 |
+| **16** | 8.5909 | 0.2677 | 0.0304 | 0.0373 | 0.0231 | 0.5367 | 27 |
+| **32** | 8.8903 | 0.2472 | 0.0245 | 0.0321 | 0.0195 | 0.4522 | 29 |
 
 ---
 
@@ -509,12 +509,12 @@ HydroDS may exhibit *more* L1 cache misses than CSB+-Tree yet still perform fast
 
 | Threads | Insert (s) | Search (s) | Range Sml (s) | Range Med (s) | Range Lrg (s) | Delete (s) | Memory (MB) |
 |:--------|:-----------|:-----------|:--------------|:--------------|:--------------|:-----------|:------------|
-| **1** | ___ | ___ | ___ | ___ | ___ | ___ | ___ |
-| **2** | ___ | ___ | ___ | ___ | ___ | ___ | ___ |
-| **4** | ___ | ___ | ___ | ___ | ___ | ___ | ___ |
-| **8** | ___ | ___ | ___ | ___ | ___ | ___ | ___ |
-| **16** | ___ | ___ | ___ | ___ | ___ | ___ | ___ |
-| **32** | ___ | ___ | ___ | ___ | ___ | ___ | ___ |
+| **1** | 7.0767 | 0.7908 | 0.1797 | 0.4387 | 0.2098 | 1.2507 | 33 |
+| **2** | 12.6073 | 0.4349 | 0.0953 | 0.2051 | 0.1174 | 1.8793 | 17 |
+| **4** | 15.8659 | 0.2527 | 0.0465 | 0.1192 | 0.0638 | 2.1394 | 16 |
+| **8** | 16.2451 | 0.2680 | 0.0318 | 0.0699 | 0.0362 | 2.2188 | 16 |
+| **16** | 23.6096 | 0.2561 | 0.0245 | 0.0531 | 0.0288 | 2.3051 | 16 |
+| **32** | 22.3218 | 0.2564 | 0.0298 | 0.0551 | 0.0274 | 2.4940 | 16 |
 
 ---
 
@@ -524,12 +524,12 @@ HydroDS may exhibit *more* L1 cache misses than CSB+-Tree yet still perform fast
 
 | Threads | Insert (s) | Search (s) | Range Sml (s) | Range Med (s) | Range Lrg (s) | Delete (s) | Memory (MB) |
 |:--------|:-----------|:-----------|:--------------|:--------------|:--------------|:-----------|:------------|
-| **1** | ___ | ___ | ___ | ___ | ___ | ___ | ___ |
-| **2** | ___ | ___ | ___ | ___ | ___ | ___ | ___ |
-| **4** | ___ | ___ | ___ | ___ | ___ | ___ | ___ |
-| **8** | ___ | ___ | ___ | ___ | ___ | ___ | ___ |
-| **16** | ___ | ___ | ___ | ___ | ___ | ___ | ___ |
-| **32** | ___ | ___ | ___ | ___ | ___ | ___ | ___ |
+| **1** | 3.6405 | 0.0770 | 0.0633 | 0.2904 | 0.1327 | 0.2961 | 89 |
+| **2** | 7.4280 | 0.1964 | 0.0336 | 0.1531 | 0.0843 | 0.6280 | 76 |
+| **4** | 9.1711 | 0.2355 | 0.0259 | 0.0955 | 0.0383 | 0.6842 | 109 |
+| **8** | 10.4683 | 0.2669 | 0.0239 | 0.0514 | 0.0276 | 0.9048 | 83 |
+| **16** | 24.0261 | 0.2242 | 0.0223 | 0.0501 | 0.0268 | 2.2943 | 87 |
+| **32** | 24.1301 | 0.2180 | 0.0274 | 0.0558 | 0.0273 | 2.0618 | 122 |
 
 ---
 
