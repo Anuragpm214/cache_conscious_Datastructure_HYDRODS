@@ -383,20 +383,33 @@ g++ -std=c++17 -O3 -march=native -mavx2 -o hydrods_test hydrods_test.cpp
 
 ## Running Benchmarks
 
-### 1. Full Benchmark Suite (HydroDS vs CSB+-Tree vs ALEX)
+### 1. Flexible Benchmark Suite
 
-The `master_benchmark` binary accepts a single argument specifying which data structure to benchmark. Each run scales from 1 to 32 threads automatically.
+The `master_benchmark` binary is fully flexible. You can dynamically configure the number of elements, thread count, bucket capacity, and flow thresholds via command-line arguments without recompiling the code.
 
 ```bash
-# HydroDS (ConcurrentHydroDS with OLC)
-./build/master_benchmark hydrods
+# Basic run for HydroDS (ConcurrentHydroDS with OLC)
+./build/master_benchmark --mode hydrods
 
-# CSB+-Tree (TLX btree_multiset with global reader-writer lock)
-./build/master_benchmark csb_tree
+# Test with 10 Million elements, 8 threads, and Capacity 1024
+./build/master_benchmark --mode hydrods --n 10000000 --threads 8 --cap 1024
 
-# ALEX (Microsoft Learned Index with global reader-writer lock)
-./build/master_benchmark alex
+# Test your own custom 'sweet spot' for Pressure-Flow Thresholds
+./build/master_benchmark --mode hydrods --high 0.90 --low 0.50
+
+# Run baselines (CSB+-Tree or ALEX)
+./build/master_benchmark --mode csb_tree
+./build/master_benchmark --mode alex
 ```
+
+**Full list of arguments:**
+- `--mode <str>`: `hydrods`, `alex`, `csb_tree` (default: `hydrods`)
+- `--n <int>`: Total elements to insert (default: `5000000`)
+- `--threads <int>`: Number of OpenMP threads (default: `1`)
+- `--cap <int>`: Bucket capacity. Supported: `100, 256, 500, 1024, 2048, 4096` (default: `500`)
+- `--high <float>`: Flow trigger threshold (default: `0.85`)
+- `--low <float>`: Flow target threshold (default: `0.60`)
+- `--help`: Show the help menu
 
 ### 2. With Hardware Performance Counters
 
