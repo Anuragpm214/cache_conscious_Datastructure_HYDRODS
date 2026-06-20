@@ -105,8 +105,15 @@ struct AtomicKey {
 template <typename Key = int32_t, int BucketCapacity = 256>
 class ConcurrentHydroDS {
     static constexpr int C = BucketCapacity;
-    static constexpr double EPS_HIGH = 0.85;
-    static constexpr double EPS_LOW  = 0.50;
+    double EPS_HIGH = 0.85;
+    double EPS_LOW  = 0.50;
+
+public:
+    void set_thresholds(double high, double low) {
+        EPS_HIGH = high;
+        EPS_LOW = low;
+    }
+private:
 
     struct alignas(64) Bucket {
         OptLock lock;
