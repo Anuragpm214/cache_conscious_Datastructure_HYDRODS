@@ -13,6 +13,7 @@ add_executable(master_benchmark master_benchmark.cpp)
 
 target_include_directories(master_benchmark PRIVATE 
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine
     ${CMAKE_CURRENT_SOURCE_DIR}/tlx_baseline
     ${CMAKE_CURRENT_SOURCE_DIR}/alex_baseline/src/core
 )

@@ -75,7 +75,7 @@ int main(int argc, char** argv) {
     vector<int32_t> delete_queries(SEARCH_N);
     for (int i = 0; i < SEARCH_N; ++i) delete_queries[i] = data[dist(rng)];
 
-    vector<int> thread_counts = {1, 2, 4, 8, 16, 32};
+    vector<int> thread_counts = {1};
     
     cout << "--- Thread Scaling Execution for: " << mode << " ---" << endl;
     cout << setw(4) << "Th" << " | "
@@ -97,7 +97,7 @@ int main(int argc, char** argv) {
         uint64_t chk_s=0, chk_rs=0, chk_rm=0, chk_rl=0, chk_d=0;
 
         if (mode == "hydrods") {
-            ConcurrentHydroDS<int32_t, 256> h; 
+            ConcurrentHydroDS<int32_t, 512> h; 
             
             auto start = clk::now();
             #pragma omp parallel for
